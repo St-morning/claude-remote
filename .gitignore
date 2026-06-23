@@ -1,0 +1,5 @@
+node_modules/
+*.log
+.claude/scheduled_tasks.lock
+.DS_Store
+state.json

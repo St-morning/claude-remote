@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Claude Remote">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+  <title>Claude Remote</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text2: #8b949e;
+      --green: #3fb950;
+      --red: #f85149;
+      --blue: #58a6ff;
+      --yellow: #d2991d;
+      --radius: 14px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: 16px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    header {
+      text-align: center;
+      padding: 12px 0 8px;
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+      z-index: 10;
+    }
+    header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      margin-top: 6px; font-size: 13px; color: var(--text2);
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+      animation: pulse 2s infinite;
+    }
+    .status-dot.disconnected { background: var(--red); animation: none; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── pending section ── */
+    .section-title {
+      font-size: 13px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.8px; color: var(--text2); margin: 20px 0 10px;
+    }
+    #pending-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .request-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 18px;
+      animation: slideIn .3s ease;
+    }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(12px); } }
+
+    .request-card .tool-badge {
+      display: inline-block; padding: 4px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; letter-spacing: .3px;
+      background: rgba(88,166,255,.15); color: var(--blue);
+      margin-bottom: 10px;
+    }
+    .request-card .tool-badge.bash { background: rgba(210,153,29,.15); color: var(--yellow); }
+    .request-card .tool-badge.file { background: rgba(63,185,80,.15); color: var(--green); }
+
+    .request-card .summary {
+      font-size: 14px; line-height: 1.5; word-break: break-all;
+      background: #0d1117; border-radius: 8px; padding: 12px;
+      font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+      font-size: 13px; color: var(--text2);
+      max-height: 160px; overflow-y: auto; margin-bottom: 4px;
+    }
+    .request-card .time {
+      font-size: 11px; color: var(--text2); margin-bottom: 14px;
+    }
+
+    .btn-row { display: flex; gap: 10px; }
+    .btn {
+      flex: 1; padding: 14px 8px; border: none; border-radius: 12px;
+      font-size: 16px; font-weight: 700; cursor: pointer;
+      transition: transform .1s, opacity .2s;
+      -webkit-appearance: none; touch-action: manipulation;
+    }
+    .btn:active { transform: scale(.96); }
+    .btn-allow  { background: var(--green); color: #fff; }
+    .btn-deny   { background: var(--red);   color: #fff; }
+    .btn-always { background: var(--blue);  color: #fff; font-size: 14px; }
+    .btn:disabled { opacity: .35; pointer-events: none; }
+
+    /* ── empty state ── */
+    .empty {
+      text-align: center; padding: 50px 20px; color: var(--text2);
+    }
+    .empty .icon { font-size: 64px; margin-bottom: 16px; display: block; }
+    .empty p { font-size: 15px; line-height: 1.6; }
+
+    /* ── history ── */
+    #history-list { display: flex; flex-direction: column; gap: 6px; }
+    .history-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-radius: 10px;
+      background: var(--card); border: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .history-item .dec {
+      font-weight: 700; font-size: 11px; padding: 3px 10px; border-radius: 12px;
+    }
+    .dec.allow { background: rgba(63,185,80,.15); color: var(--green); }
+    .dec.deny  { background: rgba(248,81,73,.15); color: var(--red); }
+
+    footer {
+      text-align: center; font-size: 11px; color: var(--text2);
+      margin-top: 30px; padding-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🤖 Claude Remote</h1>
+    <div class="status-badge">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">已连接</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="section-title">⏳ 待审批 <span id="pending-count"></span></div>
+    <div id="pending-list"></div>
+    <div class="empty" id="empty-state">
+      <span class="icon">🛋️</span>
+      <p>暂无待审批的请求<br>当 Claude Code 需要权限时会自动出现</p>
+    </div>
+
+    <div class="section-title">📋 最近记录</div>
+    <div id="history-list"></div>
+  </main>
+
+  <footer>Claude Remote · 滑动到主屏幕可像 App 一样使用</footer>
+
+  <script>
+    const pendingList = document.getElementById('pending-list');
+    const emptyState = document.getElementById('empty-state');
+    const pendingCount = document.getElementById('pending-count');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const historyList = document.getElementById('history-list');
+
+    let sseReconnectTimer = null;
+
+    function connectSSE() {
+      const es = new EventSource('/events');
+
+      es.addEventListener('open', () => {
+        statusDot.classList.remove('disconnected');
+        statusText.textContent = '已连接';
+        if (sseReconnectTimer) { clearTimeout(sseReconnectTimer); sseReconnectTimer = null; }
+      });
+
+      es.addEventListener('snapshot', (e) => {
+        try {
+          const list = JSON.parse(e.data);
+          pendingList.innerHTML = '';
+          list.forEach(r => renderCard(r));
+          updateEmpty();
+        } catch (_) {}
+      });
+
+      es.addEventListener('new_request', (e) => {
+        try {
+          const r = JSON.parse(e.data);
+          renderCard(r);
+          updateEmpty();
+          // vibrate on mobile
+          if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        } catch (_) {}
+      });
+
+      es.addEventListener('resolved', (e) => {
+        try {
+          const { id } = JSON.parse(e.data);
+          const card = document.getElementById('card-' + id);
+          if (card) { card.style.opacity = '0.35'; card.style.transition = 'opacity .3s'; }
+          updateEmpty();
+          loadHistory();
+        } catch (_) {}
+      });
+
+      es.addEventListener('timeout', (e) => {
+        try {
+          const { id } = JSON.parse(e.data);
+          const card = document.getElementById('card-' + id);
+          if (card) card.remove();
+          updateEmpty();
+          loadHistory();
+        } catch (_) {}
+      });
+
+      es.onerror = () => {
+        es.close();
+        statusDot.classList.add('disconnected');
+        statusText.textContent = '重连中…';
+        sseReconnectTimer = setTimeout(connectSSE, 3000);
+      };
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await fetch('/api/history');
+        const list = await res.json();
+        historyList.innerHTML = list.map(h => `
+          <div class="history-item">
+            <span>${esc(h.tool_name)} — ${esc(h.id.slice(0,6))}</span>
+            <span class="dec ${h.decision}">${h.decision === 'allow' ? '✓ 允许' : '✗ 拒绝'}</span>
+          </div>
+        `).join('');
+      } catch (_) {}
+    }
+
+    function renderCard(r) {
+      const existing = document.getElementById('card-' + r.id);
+      if (existing) return;
+      const card = document.createElement('div');
+      card.className = 'request-card';
+      card.id = 'card-' + r.id;
+      card.innerHTML = `
+        <div class="tool-badge ${r.tool_name === 'Bash' ? 'bash' : r.tool_name.includes('Write')||r.tool_name.includes('Read') ? 'file' : ''}">${esc(r.tool_name)}</div>
+        <div class="summary">${esc(r.summary || 'No details')}</div>
+        <div class="time">${timeAgo(r.timestamp)}</div>
+        <div class="btn-row">
+          <button class="btn btn-deny" onclick="act('deny','${r.id}')">✕ 拒绝</button>
+          <button class="btn btn-allow" onclick="act('approve','${r.id}')">✓ 允许</button>
+        </div>
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn btn-always" onclick="act('always','${r.id}')">🔓 始终允许</button>
+        </div>
+      `;
+      pendingList.prepend(card);
+    }
+
+    async function act(type, id) {
+      const btns = document.querySelectorAll('#card-' + id + ' .btn');
+      btns.forEach(b => b.disabled = true);
+      try {
+        await fetch('/api/' + type + '/' + id, { method: 'POST' });
+      } catch (err) {
+        btns.forEach(b => b.disabled = false);
+        alert('操作失败: ' + err.message);
+      }
+    }
+
+    function updateEmpty() {
+      const count = pendingList.children.length;
+      pendingCount.textContent = count ? '(' + count + ')' : '';
+      emptyState.style.display = count ? 'none' : 'block';
+    }
+
+    function timeAgo(ts) {
+      const sec = Math.floor((Date.now() - ts) / 1000);
+      if (sec < 5) return '刚刚';
+      if (sec < 60) return sec + ' 秒前';
+      const min = Math.floor(sec / 60);
+      return min + ' 分钟前';
+    }
+
+    function esc(s) {
+      if (typeof s !== 'string') s = String(s);
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    // init
+    connectSSE();
+    loadHistory();
+  </script>
+</body>
+</html>

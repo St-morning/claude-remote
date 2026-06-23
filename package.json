@@ -1,0 +1,19 @@
+{
+    "name": "claude-remote",
+    "version": "1.0.0",
+    "description": "Remote control Claude Code permissions from your phone",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "tunnel": "npx localtunnel --port 24000"
+    },
+    "dependencies": {
+        "@larksuiteoapi/node-sdk": "^1.67.0",
+        "express": "^4.21.0",
+        "qrcode-terminal": "^0.12.0",
+        "ws": "^8.21.0"
+    },
+    "devDependencies": {
+        "localtunnel": "^2.0.2"
+    }
+}
