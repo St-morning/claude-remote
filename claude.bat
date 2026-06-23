@@ -1,0 +1,5 @@
+@echo off
+REM Start Feishu server first if not running
+powershell -NoProfile -Command "if (-not (Get-NetTCPConnection -LocalPort 24000 -State Listen -ErrorAction SilentlyContinue)) { Start-Process node -WorkingDirectory 'e:\Todesk_data\claude-remote' -ArgumentList 'server.js' -NoNewWindow }" 2>nul
+REM Launch Claude CLI
+"%APPDATA%\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe" %*
