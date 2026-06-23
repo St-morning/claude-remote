@@ -8,3 +8,16 @@ context.json
 .env
 temp_*.txt
 temp_*.json
+logs/
+npm-debug.log*
+yarn-debug.log*
+*.tmp
+*.swp
+*~
+.cache/
+.turbo/
+.claude/settings.local.json
+.claude/backups/
+.claude/plans/
+Thumbs.db
+Desktop.ini
