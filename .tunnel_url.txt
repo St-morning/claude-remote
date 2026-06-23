@@ -1,1 +1,5 @@
+<<<<<<< HEAD
 https://eleven-dragons-flash.loca.lt
+=======
+﻿https://cool-feet-like.loca.lt
+>>>>>>> 5bab2b20c4eba566b73440404ff4cd65a160ee6a
