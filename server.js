@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -37,6 +37,7 @@ let feishuToken = null;
 let feishuTokenExpiry = 0;
 let userOpenId = null;
 let lastCheckedMsgId = null;  // for polling new messages
+let lastCheckedTime = 0;      // for polling new messages (timestamp)
 let feishuChatId = null;
 let pollTimer = null;
 
@@ -45,9 +46,10 @@ try {
   const s = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
   userOpenId = s.userOpenId;
   lastCheckedMsgId = s.lastCheckedMsgId;
+  lastCheckedTime = s.lastCheckedTime || 0;
   feishuChatId = s.feishuChatId;
 } catch (_) { /* first run */ }
-function saveState() { try { fs.writeFileSync(STATE_FILE, JSON.stringify({ userOpenId, lastCheckedMsgId, feishuChatId })); } catch(e) { console.error("SaveState:", e.message); } }
+function saveState() { try { fs.writeFileSync(STATE_FILE, JSON.stringify({ userOpenId, lastCheckedMsgId, lastCheckedTime, feishuChatId })); } catch(e) { console.error("SaveState:", e.message); } }
 // Periodic state save every 30s (in case of force kill)
 setInterval(saveState, 30000);
 // Graceful shutdown
@@ -126,7 +128,7 @@ async function getFeishuToken() {
 
 // ── Feishu: send text message ────────────────────────────────────────
 async function sendFeishuText(text) {
-  if (!userOpenId) { console.log('⚠ No user open_id yet'); return null; }
+  if (!userOpenId) { chatLog('SEND FAIL: no userOpenId'); return null; }
   const token = await getFeishuToken();
   const res = await fetch(`${FEISHU_API}/im/v1/messages?receive_id_type=open_id`, {
     method: 'POST',
@@ -138,7 +140,8 @@ async function sendFeishuText(text) {
     }),
   });
   const data = await res.json();
-  if (data.code !== 0) { console.log(`⚠ Feishu send: ${data.msg}`); return null; }
+  if (data.code !== 0) { chatLog(`SEND FAIL: code=${data.code} msg=${data.msg}`); return null; }
+  chatLog(`SEND OK: ${text.slice(0, 100)}`);
   return data.data?.message_id;
 }
 
@@ -168,15 +171,17 @@ async function pollFeishuMessages() {
         if (processedMsgIds.size > 300) { const arr=[...processedMsgIds]; processedMsgIds.clear(); arr.slice(-150).forEach(id=>processedMsgIds.add(id)); }
 
         foundNew = true;
-        if (!newUserLastId || msg.message_id > newUserLastId) newUserLastId = msg.message_id;
-        const msgTime = parseInt(msg.create_time) || 0; // milliseconds
+        const msgTime = parseInt(msg.create_time) || 0;
+        if (!lastCheckedTime || msgTime > lastCheckedTime) { lastCheckedTime = msgTime; }
+        // milliseconds (moved above)
         const content = JSON.parse(msg.body?.content || '{}');
         const replyText = (content.text || '').trim();
         console.log(`💬 User: "${replyText}"`);
 
-        if (replyText === 'hello' || replyText === 'hi' || replyText === '你好' || replyText === '测试') {
+        const lowerReply = replyText.toLowerCase();
+        if (lowerReply.startsWith('hello') || lowerReply === 'hi' || lowerReply === '你好' || lowerReply === '测试') {
           await sendFeishuText('✅ 已连接！当 Claude Code 需要权限时，发消息到这里。回复「允许」或「拒绝」即可审批。');
-        } else if (replyText.includes('允许') || replyText.includes('拒绝') || replyText === 'y' || replyText === 'n' || replyText === 'yes' || replyText === 'no') {
+        } else if (replyText.includes('允许') || replyText.includes('拒绝') || lowerReply === 'y' || lowerReply === 'n' || lowerReply === 'yes' || lowerReply === 'no') {
           handleUserReply(replyText, msgTime);
         } else {
           // General chat message → queue for Claude
@@ -184,11 +189,12 @@ async function pollFeishuMessages() {
           while (chatQueue.length > 100) chatQueue.shift();
           chatLog(`FROM FEISHU: ${replyText}`);
           console.log(`💬 Chat queued: "${replyText}"`);
+          await sendFeishuText(`📩 已收到，已转发给 Claude\n\n"${replyText.slice(0, 200)}"`);
         }
       }
 
       if (foundNew) {
-        lastCheckedMsgId = newUserLastId;
+        if (lastCheckedTime > 0) { lastCheckedMsgId = 'ts_' + lastCheckedTime; }
         saveState();
       }
     } else {
@@ -455,15 +461,24 @@ app.post('/api/feishu/event', async (req, res) => {
     const msg = event.message || {};
     const sender = event.sender || {};
     // Skip bot's own messages
-    if (msg.msg_type === 'text' && sender.sender_id?.open_id && sender.sender_id.open_id !== userOpenId) {
+    if (msg.msg_type === 'text' && sender.sender_id?.open_id && sender.sender_id.open_id) {
       const content = JSON.parse(msg.content || '{}');
       const text = (content.text || '').trim();
       if (text) {
-        const dupes = chatQueue.filter(m => m.text === text).length;
-        if (dupes === 0) {
-          chatQueue.push({ text, timestamp: Date.now() });
-          chatLog('FROM FEISHU: ' + text);
-          console.log('Chat queued (webhook): "' + text + '"');
+        const lowerText = text.toLowerCase();
+        if (lowerText.startsWith('hello') || lowerText === 'hi' || lowerText === '你好' || lowerText === '测试') {
+          await sendFeishuText('✅ 已连接！当 Claude Code 需要权限时，发消息到这里。回复「允许」或「拒绝」即可审批。');
+          chatLog('FROM FEISHU (auto-reply): ' + text);
+        } else if (lowerText.includes('允许') || lowerText.includes('拒绝') || lowerText === 'y' || lowerText === 'n' || lowerText === 'yes' || lowerText === 'no') {
+          handleUserReply(text, Date.now());
+          chatLog('FROM FEISHU (approval): ' + text);
+        } else {
+          const dupes = chatQueue.filter(m => m.text === text).length;
+          if (dupes === 0) {
+            chatQueue.push({ text, timestamp: Date.now() });
+            chatLog('FROM FEISHU: ' + text);
+            console.log('Chat queued (webhook): "' + text + '"');
+          }
         }
       }
     }
