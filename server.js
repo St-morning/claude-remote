@@ -8,9 +8,15 @@ const app = express();
 const PORT = 24000;
 
 // ── Feishu config ────────────────────────────────────────────────────
-const FEISHU_APP_ID = 'cli_aab820b96c78dbd6';
-const FEISHU_APP_SECRET = 'pdx4z4w7iKKsG3pHQeUWMblchvLZISQ7';
+const FEISHU_APP_ID = process.env.FEISHU_APP_ID || '';
+const FEISHU_APP_SECRET = process.env.FEISHU_APP_SECRET || '';
 const FEISHU_API = 'https://open.feishu.cn/open-apis';
+
+if (!FEISHU_APP_ID || !FEISHU_APP_SECRET) {
+  console.error('❌ 请设置环境变量 FEISHU_APP_ID 和 FEISHU_APP_SECRET');
+  console.error('   cp .env.example .env 并填入真实值');
+  process.exit(1);
+}
 const STATE_FILE = path.join(__dirname, 'state.json');
 const LOG_FILE = path.join(__dirname, 'chat.log');
 
@@ -56,9 +62,7 @@ setInterval(saveState, 30000);
 process.on('SIGTERM', () => { saveState(); process.exit(); });
 process.on('SIGINT', () => { saveState(); process.exit(); });
 
-// Hardcode known values from successful test
-if (!userOpenId) { userOpenId = 'ou_1f3e008bacc691ebaf00b2d00d8bdd09'; }
-if (!feishuChatId) { feishuChatId = 'oc_42d219c6722b627a27d1a10ef77d48e5'; }
+// Values load from state.json on first run after pairing
 saveState();
 
 app.use(express.json());

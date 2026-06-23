@@ -3,3 +3,8 @@ node_modules/
 .claude/scheduled_tasks.lock
 .DS_Store
 state.json
+context.json
+.tunnel_url.txt
+.env
+temp_*.txt
+temp_*.json

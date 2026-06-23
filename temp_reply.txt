@@ -1,3 +1,0 @@
-收到你的消息「完善readme文档」，我来看看 README 并完善它。
-
-—— Claude (via claude-remote)
